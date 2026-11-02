@@ -4,7 +4,11 @@ A habit tracker for the desktop. Check in on a few habits once a day,
 watch the month fill in, and keep everything on your own machine — no account,
 no cloud, no telemetry.
 
-<img width="1114" height="753" alt="image" src="https://github.com/user-attachments/assets/e30674a9-94a7-4902-8315-ba36a98195af" />
+<img width="1114" height="752" alt="image" src="https://github.com/user-attachments/assets/127dcd72-5ae2-4741-a935-d6d85d37d423" />
+<img width="1114" height="751" alt="image" src="https://github.com/user-attachments/assets/0f5ce467-0dae-443c-b60d-4f7089e0efab" />
+<img width="1114" height="753" alt="image" src="https://github.com/user-attachments/assets/bc447d86-4de6-4221-9ab0-9deb4180da5a" />
+<img width="1111" height="749" alt="image" src="https://github.com/user-attachments/assets/24156b7a-009d-4aa4-85ab-23fe18bfb4e9" />
+
 
 The app lives in `desktop/` and is built with Tauri 2, React 19, TypeScript,
 Rust and SQLite.
