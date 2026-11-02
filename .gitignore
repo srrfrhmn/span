@@ -1,7 +1,1 @@
 __pycache__/
-*.py[cod]
-build/
-dist/
-*.spec
-.venv/
-.build-deps/

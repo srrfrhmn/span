@@ -6,13 +6,8 @@ no cloud, no telemetry.
 
 <img width="1114" height="753" alt="image" src="https://github.com/user-attachments/assets/e30674a9-94a7-4902-8315-ba36a98195af" />
 
-
-There are two implementations in this repository:
-
-| Path        | What it is                                                        |
-| ----------- | ----------------------------------------------------------------- |
-| `desktop/`  | The current app: Tauri 2 + React 19 + TypeScript + Rust + SQLite. |
-| `span_app/` | The original Python + Tk app, kept as reference.                  |
+The app lives in `desktop/` and is built with Tauri 2, React 19, TypeScript,
+Rust and SQLite.
 
 ## The desktop app
 
@@ -66,17 +61,3 @@ cd desktop
 npm test                          # frontend helpers (Vitest)
 cargo test --manifest-path src-tauri/Cargo.toml   # database + IPC layer
 ```
-
-## The original Python app
-
-`span_app/` is the first version, kept for reference. It stores its data in
-`%APPDATA%\span\span.db` (or the platform equivalent) and has no dependencies
-beyond Python's standard library.
-
-```bash
-python span.py
-```
-
-You can install a launcher with `python -m pip install .`, package it with
-`python build.py` (PyInstaller), and test it with
-`python -m unittest discover -s tests`.
