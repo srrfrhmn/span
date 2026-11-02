@@ -4,6 +4,9 @@ A habit tracker for the desktop. Check in on a few habits once a day,
 watch the month fill in, and keep everything on your own machine — no account,
 no cloud, no telemetry.
 
+<img width="1114" height="753" alt="image" src="https://github.com/user-attachments/assets/e30674a9-94a7-4902-8315-ba36a98195af" />
+
+
 There are two implementations in this repository:
 
 | Path        | What it is                                                        |
