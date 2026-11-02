@@ -98,7 +98,7 @@ export function LifeView() {
       }
     }
 
-    // A quiet ring around the current week.
+    // A subtle ring around the current week.
     if (lived < totalWeeks) {
       const row = Math.floor(lived / 52);
       const col = lived % 52;

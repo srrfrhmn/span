@@ -1,6 +1,6 @@
 # span
 
-A quiet habit tracker for the desktop. Check in on a few habits once a day,
+A habit tracker for the desktop. Check in on a few habits once a day,
 watch the month fill in, and keep everything on your own machine — no account,
 no cloud, no telemetry.
 

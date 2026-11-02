@@ -725,6 +725,7 @@ impl Db {
         tx.execute("DELETE FROM habits", [])?;
         tx.execute("DELETE FROM settings", [])?;
 
+        let mut imported_ids = std::collections::HashSet::new();
         for habit in &bundle.habits {
             if habit.name.trim().is_empty() {
                 continue;
@@ -738,8 +739,16 @@ impl Db {
                     if habit.archived { 1 } else { 0 }
                 ],
             )?;
+            imported_ids.insert(habit.id);
         }
-        for completion in &bundle.completions {
+        // A check-in for a habit that was skipped or missing would violate the
+        // foreign key and abort the whole import, so drop those rows instead.
+        let completions: Vec<&Completion> = bundle
+            .completions
+            .iter()
+            .filter(|completion| imported_ids.contains(&completion.habit_id))
+            .collect();
+        for completion in &completions {
             tx.execute(
                 "INSERT OR IGNORE INTO completions(habit_id, day) VALUES(?1, ?2)",
                 params![completion.habit_id, completion.day],
@@ -775,8 +784,8 @@ impl Db {
         seed_defaults(&conn)?;
 
         Ok(ImportResult {
-            habits: bundle.habits.len(),
-            completions: bundle.completions.len(),
+            habits: imported_ids.len(),
+            completions: completions.len(),
             days: bundle.targets.len(),
             notes: bundle.notes.len(),
         })
@@ -1305,12 +1314,12 @@ mod tests {
         let today = today_iso();
         assert_eq!(db.get_note(&today).expect("note"), None);
         assert_eq!(
-            db.set_note(&today, "  a quiet day  ").expect("note"),
-            Some("a quiet day".to_string())
+            db.set_note(&today, "  a good day  ").expect("note"),
+            Some("a good day".to_string())
         );
         assert_eq!(
             db.get_note(&today).expect("note").as_deref(),
-            Some("a quiet day")
+            Some("a good day")
         );
         assert_eq!(db.set_note(&today, "   ").expect("note"), None);
         assert_eq!(db.get_note(&today).expect("note"), None);
@@ -1339,6 +1348,27 @@ mod tests {
         assert_eq!(state.completed.len(), 1);
         assert_eq!(state.note.as_deref(), Some("a line"));
         assert!(db.settings().expect("settings").onboarded);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn import_skips_check_ins_for_missing_habits() {
+        let dir = scratch("orphans");
+        let db = Db::open_at(dir.clone()).expect("open");
+        let habit = db.create_habit("Write").expect("habit").remove(0);
+        let today = today_iso();
+        db.toggle(habit.id, &today).expect("toggle");
+        let mut bundle: Value =
+            serde_json::from_str(&db.export_json().expect("export")).expect("json");
+        bundle["completions"]
+            .as_array_mut()
+            .expect("completions")
+            .push(json!({ "habitId": 9999, "day": today }));
+
+        let result = db.import_json(&bundle.to_string()).expect("import");
+        assert_eq!(result.habits, 1);
+        assert_eq!(result.completions, 1);
+        assert_eq!(db.day_state(&today).expect("day").completed, vec![habit.id]);
         let _ = fs::remove_dir_all(dir);
     }
 

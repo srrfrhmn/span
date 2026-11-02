@@ -7,7 +7,7 @@ import {
   Sparkles,
   TrendingUp,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { HabitRow } from "../components/HabitRow";
 import { Ring } from "../components/Ring";
 import { iso, lastSevenDays, longDate, parse } from "../lib/dates";
@@ -28,7 +28,10 @@ export function TodayView() {
   const [marks, setMarks] = useState<HabitMark[]>([]);
   const [weekSummary, setWeekSummary] = useState<DaySummary[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
-  const [note, setNoteDraft] = useState(day?.note ?? "");
+  const loadedDay = day?.day;
+  const savedNote = day?.note ?? "";
+  const [note, setNoteDraft] = useState({ day: loadedDay ?? "", body: savedNote });
+  const unsavedNote = useRef<{ day: string; body: string } | null>(null);
   const [noteState, setNoteState] = useState<"saved" | "saving">("saved");
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
@@ -72,19 +75,46 @@ export function TodayView() {
     };
   }, [today, dataVersion]);
 
+  // Load the note when a different day is shown. Unsaved text for the previous
+  // day is saved first. The draft is not reset when the saved note changes,
+  // so trimming on save never eats spaces or keystrokes typed mid-save.
   useEffect(() => {
-    setNoteDraft(day?.note ?? "");
-    setNoteState("saved");
-  }, [selectedDay, day?.note]);
+    if (!loadedDay) return;
+    const unsaved = unsavedNote.current;
+    if (unsaved && unsaved.day !== loadedDay) {
+      unsavedNote.current = null;
+      void saveNote(unsaved.day, unsaved.body);
+    }
+    setNoteDraft((current) =>
+      current.day === loadedDay ? current : { day: loadedDay, body: savedNote },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadedDay]);
 
   useEffect(() => {
-    if (note === (day?.note ?? "")) return;
+    if (!loadedDay || note.day !== loadedDay) return;
+    if (note.body.trim() === savedNote) {
+      unsavedNote.current = null;
+      setNoteState("saved");
+      return;
+    }
+    unsavedNote.current = note;
     setNoteState("saving");
     const handle = window.setTimeout(() => {
-      void saveNote(note).then(() => setNoteState("saved"));
+      unsavedNote.current = null;
+      void saveNote(note.day, note.body);
     }, 650);
     return () => window.clearTimeout(handle);
-  }, [note, day?.note, saveNote]);
+  }, [note, loadedDay, savedNote, saveNote]);
+
+  // Leaving the Today view must not drop a note that is still waiting to save.
+  useEffect(
+    () => () => {
+      const unsaved = unsavedNote.current;
+      if (unsaved) void saveNote(unsaved.day, unsaved.body);
+    },
+    [saveNote],
+  );
 
   const marksByHabit = useMemo(() => {
     const map = new Map<number, Set<string>>();
@@ -331,10 +361,13 @@ export function TodayView() {
             </div>
             <textarea
               className="note-input"
-              value={note}
+              value={note.day === loadedDay ? note.body : savedNote}
               maxLength={5000}
               placeholder="A line about the day…"
-              onChange={(event) => setNoteDraft(event.target.value)}
+              onChange={(event) => {
+                if (!loadedDay) return;
+                setNoteDraft({ day: loadedDay, body: event.target.value });
+              }}
             />
           </section>
         </div>

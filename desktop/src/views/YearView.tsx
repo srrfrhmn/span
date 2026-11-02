@@ -26,8 +26,8 @@ function MiniMonth({ month, weekStart, byDay, habits, today, selected, onPick }:
         <h3>{format(month, "MMMM")}</h3>
       </header>
       <div className="mini-month__labels">
-        {labels.map((label) => (
-          <span key={label}>{label}</span>
+        {labels.map((label, index) => (
+          <span key={`${label}-${index}`}>{label}</span>
         ))}
       </div>
       <div className="mini-month__grid">

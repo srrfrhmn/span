@@ -101,7 +101,7 @@ def create_shortcut(target: Path) -> None:
         f"$link.TargetPath = {quote_powershell(target)}; "
         f"$link.WorkingDirectory = {quote_powershell(target.parent)}; "
         f"$link.IconLocation = {quote_powershell(str(target) + ',0')}; "
-        "$link.Description = 'A quiet, local habit tracker'; "
+        "$link.Description = 'A local habit tracker'; "
         "$link.Save()"
     )
     subprocess.run(
@@ -249,7 +249,7 @@ class Installer:
         ).pack(anchor="w")
         tk.Label(
             shell,
-            text="A quiet place for the habits that matter.",
+            text="A place for the habits that matter.",
             bg="#111111",
             fg="#999999",
             font=("Segoe UI Variable", 11),

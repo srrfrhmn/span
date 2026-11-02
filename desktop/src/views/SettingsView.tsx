@@ -307,11 +307,15 @@ export function SettingsView() {
           <div className="settings-row">
             <div>
               <strong>Reduce motion</strong>
-              <span>Keep transitions quiet and immediate.</span>
+              <span>Keep transitions minimal and immediate.</span>
             </div>
             <Toggle
               checked={settings.reduceMotion}
-              onChange={(value) => void saveSettings({ reduceMotion: value })}
+              onChange={(value) =>
+                void saveSettings({ reduceMotion: value }).catch((error) =>
+                  toast(errorMessage(error), "error"),
+                )
+              }
               label="Reduce motion"
             />
           </div>
@@ -335,13 +339,24 @@ export function SettingsView() {
               <div
                 key={habit.id}
                 className={`edit-habit ${dragId === habit.id ? "is-dragging" : ""}`}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={() => dropOn(habit.id)}
+                onDragEnter={(event) => {
+                  if (dragId !== null) event.preventDefault();
+                }}
+                onDragOver={(event) => {
+                  if (dragId === null) return;
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "move";
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  dropOn(habit.id);
+                }}
               >
                 <span
                   className="edit-habit__grip"
                   draggable
                   onDragStart={(event) => {
+                    event.dataTransfer.effectAllowed = "move";
                     event.dataTransfer.setData("text/plain", String(habit.id));
                     setDragId(habit.id);
                   }}
@@ -504,7 +519,7 @@ export function SettingsView() {
               <strong>
                 <Power size={14} /> Launch at login
               </strong>
-              <span>Open span quietly when Windows starts.</span>
+              <span>Open span automatically when Windows starts.</span>
             </div>
             <Toggle
               checked={launchAtLogin}
@@ -569,7 +584,7 @@ export function SettingsView() {
           <div>
             <h2>span 0.1.0</h2>
             <p className="settings-help">
-              A quiet habit tracker. No account, no cloud, no telemetry. Built with Tauri,
+              A habit tracker. No account, no cloud, no telemetry. Built with Tauri,
               React, and SQLite.
             </p>
           </div>

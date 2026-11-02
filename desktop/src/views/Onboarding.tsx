@@ -137,7 +137,7 @@ export function Onboarding() {
         <div className="onboarding__body">
           {step === 0 ? (
             <section className="onboarding__panel">
-              <span className="eyebrow">A quiet habit tracker</span>
+              <span className="eyebrow">A habit tracker</span>
               <h1>Small promises, kept daily.</h1>
               <p className="onboarding__lede">
                 span is a gentle place to check in on the habits that matter. No streaks to

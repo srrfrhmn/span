@@ -1,7 +1,7 @@
 [package]
 name = "span"
 version = "0.1.0"
-description = "A quiet desktop habit tracker"
+description = "A desktop habit tracker"
 authors = ["span"]
 edition = "2024"
 

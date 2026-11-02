@@ -48,7 +48,7 @@ export function useReminder() {
         if (remaining === 0 || day.target === 0) return;
 
         sendNotification({
-          title: "A quiet nudge from span",
+          title: "A nudge from span",
           body:
             remaining === 1
               ? "One habit is still open today."

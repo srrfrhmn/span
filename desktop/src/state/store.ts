@@ -74,7 +74,7 @@ interface AppStore {
   restoreHabit: (id: number) => Promise<void>;
   deleteHabit: (id: number) => Promise<void>;
   loadArchived: () => Promise<void>;
-  setNote: (body: string) => Promise<void>;
+  setNote: (day: ISODate, body: string) => Promise<void>;
   toast: (message: string, tone?: Toast["tone"]) => void;
   dismissToast: (id: number) => void;
   setPalette: (open: boolean) => void;
@@ -125,10 +125,13 @@ export const useApp = create<AppStore>((set, get) => ({
   reload: async () => {
     const boot = await api.bootstrap();
     applyTheme(boot.settings);
+    // After midnight, someone looking at "today" should land on the new today.
+    const wasOnToday = get().selectedDay === get().today;
     set({
       settings: boot.settings,
       habits: boot.habits,
       today: boot.today,
+      selectedDay: wasOnToday ? boot.today : get().selectedDay,
       streak: boot.streak,
       legacyAvailable: boot.legacyAvailable,
       dataDir: boot.dataDir,
@@ -269,8 +272,7 @@ export const useApp = create<AppStore>((set, get) => ({
     }
   },
 
-  setNote: async (body) => {
-    const day = get().selectedDay;
+  setNote: async (day, body) => {
     try {
       const note = await api.setNote(day, body);
       set((state) =>

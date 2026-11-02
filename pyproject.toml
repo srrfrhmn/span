@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "span-habits"
 version = "1.0.0"
-description = "A quiet, native desktop habit tracker."
+description = "A native desktop habit tracker."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = []
