@@ -25,7 +25,7 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ThemePicker } from "../components/ThemePicker";
 import { Toggle } from "../components/Toggle";
 import { todayISO } from "../lib/dates";
@@ -53,7 +53,13 @@ export function SettingsView() {
 
   const [drafts, setDrafts] = useState<Record<number, string>>({});
   const [newHabit, setNewHabit] = useState("");
-  const [dragId, setDragId] = useState<number | null>(null);
+  const [drag, setDrag] = useState<{ id: number; from: number; to: number; dy: number } | null>(
+    null,
+  );
+  const dragMeta = useRef<{ startY: number; mids: number[]; top: number; height: number; step: number } | null>(
+    null,
+  );
+  const rowRefs = useRef(new Map<number, HTMLDivElement>());
   const [birth, setBirth] = useState(settings.birthDate);
   const [lifespan, setLifespan] = useState(String(settings.lifespan));
   const [weekStart, setWeekStart] = useState<0 | 1>(settings.weekStart);
@@ -110,16 +116,57 @@ export function SettingsView() {
     void reorderHabits(ids);
   };
 
-  const dropOn = (targetId: number) => {
-    if (dragId === null || dragId === targetId) return;
+  // Pointer-driven reordering: the real card follows the cursor at full
+  // opacity and the others slide aside, instead of the browser's faded preview.
+  const startDrag = (event: React.PointerEvent<HTMLSpanElement>, id: number, index: number) => {
+    if (event.button !== 0) return;
+    const rects = habits.map((habit) => rowRefs.current.get(habit.id)?.getBoundingClientRect());
+    if (rects.some((rect) => !rect)) return;
+    const list = rects as DOMRect[];
+    const own = list[index];
+    const gap = list.length > 1 ? list[1].top - list[0].bottom : 0;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragMeta.current = {
+      startY: event.clientY,
+      mids: list.map((rect) => rect.top + rect.height / 2),
+      top: own.top,
+      height: own.height,
+      step: own.height + gap,
+    };
+    setDrag({ id, from: index, to: index, dy: 0 });
+  };
+
+  const moveDrag = (event: React.PointerEvent<HTMLSpanElement>) => {
+    const meta = dragMeta.current;
+    if (!drag || !meta) return;
+    const dy = event.clientY - meta.startY;
+    const center = meta.top + meta.height / 2 + dy;
+    let to = 0;
+    meta.mids.forEach((mid, index) => {
+      if (index !== drag.from && mid < center) to += 1;
+    });
+    setDrag({ ...drag, dy, to });
+  };
+
+  const endDrag = (commit: boolean) => {
+    const current = drag;
+    dragMeta.current = null;
+    setDrag(null);
+    if (!commit || !current || current.from === current.to) return;
     const ids = habits.map((habit) => habit.id);
-    const from = ids.indexOf(dragId);
-    const to = ids.indexOf(targetId);
-    if (from < 0 || to < 0) return;
-    ids.splice(from, 1);
-    ids.splice(to, 0, dragId);
-    setDragId(null);
+    ids.splice(current.from, 1);
+    ids.splice(current.to, 0, current.id);
     void reorderHabits(ids);
+  };
+
+  const shiftFor = (index: number): number => {
+    const meta = dragMeta.current;
+    if (!drag || !meta) return 0;
+    if (index === drag.from) return drag.dy;
+    if (drag.from < drag.to && index > drag.from && index <= drag.to) return -meta.step;
+    if (drag.from > drag.to && index >= drag.to && index < drag.from) return meta.step;
+    return 0;
   };
 
   const submitHabit = async (event: React.FormEvent) => {
@@ -334,33 +381,23 @@ export function SettingsView() {
             </span>
           </div>
 
-          <div className="edit-habits">
+          <div className={`edit-habits ${drag ? "is-sorting" : ""}`}>
             {habits.map((habit, index) => (
               <div
                 key={habit.id}
-                className={`edit-habit ${dragId === habit.id ? "is-dragging" : ""}`}
-                onDragEnter={(event) => {
-                  if (dragId !== null) event.preventDefault();
+                ref={(element) => {
+                  if (element) rowRefs.current.set(habit.id, element);
+                  else rowRefs.current.delete(habit.id);
                 }}
-                onDragOver={(event) => {
-                  if (dragId === null) return;
-                  event.preventDefault();
-                  event.dataTransfer.dropEffect = "move";
-                }}
-                onDrop={(event) => {
-                  event.preventDefault();
-                  dropOn(habit.id);
-                }}
+                className={`edit-habit ${drag?.id === habit.id ? "is-dragging" : ""}`}
+                style={drag ? { transform: `translateY(${shiftFor(index)}px)` } : undefined}
               >
                 <span
                   className="edit-habit__grip"
-                  draggable
-                  onDragStart={(event) => {
-                    event.dataTransfer.effectAllowed = "move";
-                    event.dataTransfer.setData("text/plain", String(habit.id));
-                    setDragId(habit.id);
-                  }}
-                  onDragEnd={() => setDragId(null)}
+                  onPointerDown={(event) => startDrag(event, habit.id, index)}
+                  onPointerMove={moveDrag}
+                  onPointerUp={() => endDrag(true)}
+                  onPointerCancel={() => endDrag(false)}
                   title="Drag to reorder"
                 >
                   <GripVertical size={14} />

@@ -1498,10 +1498,6 @@ button.mini-cell:hover {
   border-color: var(--border);
 }
 
-.edit-habit.is-dragging {
-  opacity: 0.45;
-}
-
 .edit-habit__grip {
   display: grid;
   place-items: center;
@@ -1509,6 +1505,24 @@ button.mini-cell:hover {
   height: 26px;
   color: var(--faint);
   cursor: grab;
+  touch-action: none;
+}
+
+.edit-habits.is-sorting .edit-habit {
+  transition: transform 160ms ease;
+  user-select: none;
+}
+
+.edit-habits.is-sorting .edit-habit.is-dragging {
+  position: relative;
+  z-index: 2;
+  transition: none;
+  border-color: var(--border);
+  box-shadow: var(--shadow-soft);
+}
+
+.edit-habit.is-dragging .edit-habit__grip {
+  cursor: grabbing;
 }
 
 .edit-habit input {
