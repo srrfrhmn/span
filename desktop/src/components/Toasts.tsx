@@ -19,7 +19,7 @@ export function Toasts() {
           <div key={toast.id} className={`toast toast--${toast.tone}`}>
             <Icon size={16} />
             <span>{toast.message}</span>
-            <button aria-label="Dismiss" onClick={() => dismiss(toast.id)}>
+            <button aria-label="Close" onClick={() => dismiss(toast.id)}>
               <X size={13} />
             </button>
           </div>

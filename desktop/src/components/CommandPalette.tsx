@@ -73,7 +73,7 @@ export function CommandPalette() {
       },
       {
         id: "settings",
-        label: "Open Preferences",
+        label: "Open Settings",
         hint: "Settings",
         icon: <Settings size={16} />,
         run: () => go("settings"),
@@ -84,7 +84,7 @@ export function CommandPalette() {
       base.push({
         id: `habit-${habit.id}`,
         label: `${done.has(habit.id) ? "Uncheck" : "Check"} ${habit.name}`,
-        hint: done.has(habit.id) ? "Done today" : "Habit",
+        hint: done.has(habit.id) ? "Completed today" : "Habit",
         icon: <ToggleLeft size={16} />,
         run: () => {
           setView("today");
@@ -148,7 +148,7 @@ export function CommandPalette() {
         className="palette"
         role="dialog"
         aria-modal="true"
-        aria-label="Quick actions"
+        aria-label="Commands"
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="palette__search">
@@ -157,7 +157,7 @@ export function CommandPalette() {
             ref={inputRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Jump to a day, view, or habit…"
+            placeholder="Type a date, view, or habit"
             onKeyDown={(event) => {
               if (event.key === "Escape") close(false);
               if (event.key === "ArrowDown") {

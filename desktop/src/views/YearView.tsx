@@ -162,7 +162,7 @@ export function YearView() {
             </div>
             <dl className="stat-list">
               <div>
-                <dt>Perfect days</dt>
+                <dt>Complete days</dt>
                 <dd>{stats?.perfectDays ?? 0}</dd>
               </div>
               <div>

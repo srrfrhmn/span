@@ -1,0 +1,8 @@
+# Keep LF in the repository and in checkouts on every OS, so Windows and macOS
+# clones produce identical files and clean diffs.
+* text=auto eol=lf
+
+*.png binary
+*.ico binary
+*.icns binary
+*.db binary

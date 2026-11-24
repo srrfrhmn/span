@@ -26,6 +26,8 @@ pub fn bootstrap(state: State<'_, AppState>) -> Result<Bootstrap> {
         streak,
         legacy_available,
         data_dir: state.dir.to_string_lossy().to_string(),
+        platform: std::env::consts::OS.to_string(),
+        desktop: cfg!(desktop),
     })
 }
 

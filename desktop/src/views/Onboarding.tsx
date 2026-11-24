@@ -19,11 +19,11 @@ const STARTERS = [
   "Read 10 pages",
   "Drink water",
   "Write a line",
-  "Sleep by 11",
-  "No phone on waking",
+  "Sleep by 11 PM",
+  "No phone after waking",
 ];
 
-const STEPS = ["Welcome", "Your data", "Look", "Habits", "You"] as const;
+const STEPS = ["Welcome", "Data", "Theme", "Habits", "Profile"] as const;
 
 export function Onboarding() {
   const settings = useApp((state) => state.settings);
@@ -56,7 +56,7 @@ export function Onboarding() {
       const imported = await api.importLegacy();
       if (imported) {
         setImported(true);
-        toast("Your original span data is here.", "success");
+        toast("Original span data imported.", "success");
         setStep(2);
       } else {
         toast("No original span data was found.", "info");
@@ -85,10 +85,7 @@ export function Onboarding() {
         onboarded: true,
       });
       await reload();
-      toast(
-        added > 0 ? "You are set. Keep one promise today." : "You are set.",
-        "success",
-      );
+      toast("Setup complete.", "success");
     } catch (error) {
       toast(errorMessage(error), "error");
     } finally {
@@ -138,32 +135,31 @@ export function Onboarding() {
           {step === 0 ? (
             <section className="onboarding__panel">
               <span className="eyebrow">A habit tracker</span>
-              <h1>Small promises, kept daily.</h1>
+              <h1>Track your daily habits.</h1>
               <p className="onboarding__lede">
-                span is a gentle place to check in on the habits that matter. No streaks to
-                chase beyond your own, no account, no cloud. Everything lives on this
-                device.
+                Mark each habit when you complete it. All data stays on this device. There
+                is no account and no cloud sync.
               </p>
               <ul className="onboarding__points">
                 <li>
                   <Flame size={16} />
                   <span>
-                    <strong>One tap a day</strong>
-                    <em>Mark what you kept, and see the month fill in.</em>
+                    <strong>Check in each day</strong>
+                    <em>Tap a habit to mark it complete.</em>
                   </span>
                 </li>
                 <li>
                   <Sparkles size={16} />
                   <span>
-                    <strong>Notice the pattern</strong>
-                    <em>Month, year, and lifetime heatmaps make momentum visible.</em>
+                    <strong>See your history</strong>
+                    <em>The Month, Year, and Life views show your progress.</em>
                   </span>
                 </li>
                 <li>
                   <Database size={16} />
                   <span>
-                    <strong>Yours to keep</strong>
-                    <em>Plain SQLite on disk, with one-click JSON backups.</em>
+                    <strong>Local data</strong>
+                    <em>span stores data in SQLite. You can export it as JSON.</em>
                   </span>
                 </li>
               </ul>
@@ -172,12 +168,12 @@ export function Onboarding() {
 
           {step === 1 ? (
             <section className="onboarding__panel">
-              <span className="eyebrow">Your data</span>
-              <h1>{legacyAvailable ? "Bring your history along." : "Start fresh."}</h1>
+              <span className="eyebrow">Data</span>
+              <h1>{legacyAvailable ? "Import your history." : "New database."}</h1>
               <p className="onboarding__lede">
                 {legacyAvailable
-                  ? "The original span app left a database on this machine. Import it once and every habit and check-in carries over."
-                  : "There is no older span database on this machine. You can import a JSON backup later from Preferences."}
+                  ? "A database from the original span app is on this computer. Import it to keep your habits and check-ins."
+                  : "There is no database from the original span app on this computer. You can import a JSON backup later in Settings."}
               </p>
               {legacyAvailable ? (
                 <button
@@ -186,27 +182,27 @@ export function Onboarding() {
                   onClick={() => void importLegacy()}
                 >
                   <Database size={15} />
-                  {importing ? "Importing…" : "Import my span history"}
+                  {importing ? "Importing…" : "Import history"}
                 </button>
               ) : (
                 <div className="onboarding__note">
                   <Check size={14} />
-                  <span>Nothing to import — we will set up a clean database.</span>
+                  <span>span will make a new database.</span>
                 </div>
               )}
               <p className="onboarding__fine">
-                Your new data is stored separately, so the original app keeps working.
+                span keeps new data in a separate file. The original app continues to work.
               </p>
             </section>
           ) : null}
 
           {step === 2 ? (
             <section className="onboarding__panel">
-              <span className="eyebrow">The look</span>
-              <h1>Pick a mood.</h1>
+              <span className="eyebrow">Theme</span>
+              <h1>Select a theme.</h1>
               <p className="onboarding__lede">
-                Five dark themes and one light. You can change this at any time in
-                Preferences.
+                There are five dark themes and one light theme. You can change the theme
+                later in Settings.
               </p>
               <ThemePicker value={theme} onChange={previewTheme} />
             </section>
@@ -214,11 +210,11 @@ export function Onboarding() {
 
           {step === 3 ? (
             <section className="onboarding__panel">
-              <span className="eyebrow">Your habits</span>
-              <h1>What will you keep?</h1>
+              <span className="eyebrow">Habits</span>
+              <h1>Select your habits.</h1>
               <p className="onboarding__lede">
-                Choose a few to begin. Keep it small — you can add up to ten later, and
-                archive anything that stops serving you.
+                Select some habits to start. You can have a maximum of 10 active habits. You
+                can add, rename, or archive habits later.
               </p>
               <div className="starter-grid">
                 {STARTERS.map((name) => {
@@ -240,7 +236,7 @@ export function Onboarding() {
               </div>
               <p className="onboarding__fine">
                 {chosen.length === 0
-                  ? "No habits selected — you can add them on the Today screen."
+                  ? "No habits selected. You can add habits on the Today page."
                   : `${chosen.length} selected.`}
               </p>
             </section>
@@ -248,11 +244,11 @@ export function Onboarding() {
 
           {step === 4 ? (
             <section className="onboarding__panel">
-              <span className="eyebrow">You</span>
-              <h1>One last thing.</h1>
+              <span className="eyebrow">Profile</span>
+              <h1>Enter your profile.</h1>
               <p className="onboarding__lede">
-                The Life view draws your weeks. It only needs a birth date and an expected
-                age, and it never leaves this machine.
+                The Life view uses your birth date and expected age to show your life in
+                weeks. This data stays on this device.
               </p>
               <div className="onboarding__fields">
                 <label className="field">
@@ -277,7 +273,7 @@ export function Onboarding() {
                 </label>
               </div>
               <div className="onboarding__summary">
-                <span>Starting from</span>
+                <span>Start date</span>
                 <strong>{format(new Date(), "MMMM d, yyyy")}</strong>
               </div>
             </section>
@@ -298,12 +294,12 @@ export function Onboarding() {
           </span>
           {step < STEPS.length - 1 ? (
             <button className="btn primary" onClick={next}>
-              Continue <ArrowRight size={15} />
+              Next <ArrowRight size={15} />
             </button>
           ) : (
             <button className="btn primary" onClick={() => void finish()} disabled={busy}>
               <Check size={15} />
-              {busy ? "Setting up…" : "Begin"}
+              {busy ? "Saving…" : "Start"}
             </button>
           )}
         </footer>

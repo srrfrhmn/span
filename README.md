@@ -23,7 +23,7 @@ Features:
 - **Today** — one tap per habit, a week strip, day notes, momentum and streaks.
 - **Month / Year / Life** — heatmaps from a single day out to your whole life in
   weeks, each cell clickable.
-- **Preferences** — habit editor with reordering and archiving, six themes
+- **Settings** — habit editor with reordering and archiving, six themes
   (including a light "Paper"), reminders, launch at login, import/export.
 - **Details** — custom titlebar, system tray with close-to-tray, command palette
   (`Ctrl+K`), keyboard day navigation (`←`, `→`, `T`), automatic backups.

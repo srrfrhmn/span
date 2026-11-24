@@ -156,7 +156,7 @@ export function MonthView() {
             </div>
             <dl className="stat-list">
               <div>
-                <dt>Perfect days</dt>
+                <dt>Complete days</dt>
                 <dd>{stats?.perfectDays ?? 0}</dd>
               </div>
               <div>
@@ -171,7 +171,7 @@ export function MonthView() {
           </section>
 
           <section className="panel">
-            <h2>Habit consistency</h2>
+            <h2>Per habit</h2>
             <ul className="consistency">
               {(stats?.perHabit ?? []).map((habit) => (
                 <li key={habit.habitId}>

@@ -7,6 +7,8 @@ export interface Habit {
   name: string;
   position: number;
   archived: boolean;
+  /** The day the habit was archived; check-ins from then on stop counting. */
+  archivedOn: ISODate | null;
 }
 
 export interface DayState {
@@ -66,6 +68,10 @@ export interface Bootstrap {
   streak: number;
   legacyAvailable: boolean;
   dataDir: string;
+  /** `windows`, `macos`, `ios`, … as reported by Rust. */
+  platform: string;
+  /** False on iOS and Android: no tray, custom titlebar or launch at login. */
+  desktop: boolean;
 }
 
 export interface HabitMark {

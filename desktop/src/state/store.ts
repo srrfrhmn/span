@@ -38,10 +38,17 @@ export function applyTheme(settings: Settings): void {
   root.style.colorScheme = settings.theme === "paper" ? "light" : "dark";
 }
 
+/**
+ * A first guess until the backend reports its platform, so a phone does not
+ * flash desktop window controls while the app starts.
+ */
+const guessDesktop = (): boolean =>
+  typeof navigator === "undefined" || !/iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
 export function errorMessage(error: unknown): string {
   if (typeof error === "string") return error;
   if (error instanceof Error) return error.message;
-  return "Something went wrong";
+  return "An error occurred.";
 }
 
 interface AppStore {
@@ -57,6 +64,7 @@ interface AppStore {
   streak: number;
   legacyAvailable: boolean;
   dataDir: string;
+  desktop: boolean;
   dataVersion: number;
   toasts: Toast[];
   paletteOpen: boolean;
@@ -95,6 +103,7 @@ export const useApp = create<AppStore>((set, get) => ({
   streak: 0,
   legacyAvailable: false,
   dataDir: "",
+  desktop: guessDesktop(),
   dataVersion: 0,
   toasts: [],
   paletteOpen: false,
@@ -114,6 +123,7 @@ export const useApp = create<AppStore>((set, get) => ({
         streak: boot.streak,
         legacyAvailable: boot.legacyAvailable,
         dataDir: boot.dataDir,
+        desktop: boot.desktop,
       });
       const day = await api.getDay(boot.today);
       set({ day, streak: day.streak });
@@ -123,24 +133,29 @@ export const useApp = create<AppStore>((set, get) => ({
   },
 
   reload: async () => {
-    const boot = await api.bootstrap();
-    applyTheme(boot.settings);
-    // After midnight, someone looking at "today" should land on the new today.
-    const wasOnToday = get().selectedDay === get().today;
-    set({
-      settings: boot.settings,
-      habits: boot.habits,
-      today: boot.today,
-      selectedDay: wasOnToday ? boot.today : get().selectedDay,
-      streak: boot.streak,
-      legacyAvailable: boot.legacyAvailable,
-      dataDir: boot.dataDir,
-      dataVersion: get().dataVersion + 1,
-    });
-    const day = await api.getDay(get().selectedDay);
-    set({ day, streak: day.streak });
-    if (get().view === "settings") {
-      await get().loadArchived();
+    try {
+      const boot = await api.bootstrap();
+      applyTheme(boot.settings);
+      // After midnight, someone looking at "today" should land on the new today.
+      const wasOnToday = get().selectedDay === get().today;
+      set({
+        settings: boot.settings,
+        habits: boot.habits,
+        today: boot.today,
+        selectedDay: wasOnToday ? boot.today : get().selectedDay,
+        streak: boot.streak,
+        legacyAvailable: boot.legacyAvailable,
+        dataDir: boot.dataDir,
+        desktop: boot.desktop,
+        dataVersion: get().dataVersion + 1,
+      });
+      const day = await api.getDay(get().selectedDay);
+      set({ day, streak: day.streak });
+      if (get().view === "settings") {
+        await get().loadArchived();
+      }
+    } catch (error) {
+      get().toast(errorMessage(error), "error");
     }
   },
 
@@ -178,11 +193,13 @@ export const useApp = create<AppStore>((set, get) => ({
         dataVersion: get().dataVersion + 1,
       });
       if (!wasDone && fresh.target > 0 && fresh.completed.length >= fresh.target) {
-        get().toast("Every promise kept. Perfect day.", "success");
+        get().toast("All habits complete.", "success");
       }
     } catch (error) {
-      set({ day: current });
+      // Re-read the day rather than restoring the snapshot taken before this
+      // tap, which would also undo any later tap that did succeed.
       get().toast(errorMessage(error), "error");
+      await get().loadDay(current.day);
     }
   },
 
@@ -235,7 +252,7 @@ export const useApp = create<AppStore>((set, get) => ({
       set({ habits, dataVersion: get().dataVersion + 1 });
       await get().loadArchived();
       await get().loadDay(get().selectedDay);
-      get().toast("Habit archived. Its history is still here.", "info");
+      get().toast("Habit archived. Its history is kept.", "info");
     } catch (error) {
       get().toast(errorMessage(error), "error");
     }
