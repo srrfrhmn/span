@@ -189,7 +189,7 @@ export function TodayView() {
             </button>
             {!isToday ? (
               <button className="btn ghost small" onClick={() => void selectDay(today)}>
-                Back to today
+                Today
               </button>
             ) : null}
           </div>
@@ -200,7 +200,7 @@ export function TodayView() {
                 {completed}
                 <span> / {target}</span>
               </strong>
-              <small>{perfect ? "Perfect day" : target ? `${target - completed} to go` : "No habits yet"}</small>
+              <small>{perfect ? "Complete" : target ? `${target - completed} left` : "No habits"}</small>
             </div>
           </div>
         </div>
@@ -211,7 +211,7 @@ export function TodayView() {
           <div className="panel__head">
             <div>
               <h2>Daily habits</h2>
-              <p>{habits.length ? `${completed} of ${target} kept` : "Add the promises you want to keep"}</p>
+              <p>{habits.length ? `${completed} of ${target} complete` : "Add habits to track"}</p>
             </div>
             {habits.length < 10 ? (
               <button className="btn ghost small" onClick={() => setAdding(true)}>
@@ -223,7 +223,7 @@ export function TodayView() {
           {perfect ? (
             <div className="perfect-banner">
               <Sparkles size={16} />
-              <span>Every promise kept. That is a perfect day.</span>
+              <span>All habits complete.</span>
             </div>
           ) : null}
 
@@ -245,9 +245,9 @@ export function TodayView() {
 
             {habits.length === 0 ? (
               <div className="empty-state">
-                <p>No habits yet.</p>
+                <p>No habits.</p>
                 <button className="btn primary small" onClick={() => setAdding(true)}>
-                  <Plus size={14} /> Add your first habit
+                  <Plus size={14} /> Add a habit
                 </button>
               </div>
             ) : null}
@@ -260,7 +260,7 @@ export function TodayView() {
                 value={newName}
                 maxLength={80}
                 onChange={(event) => setNewName(event.target.value)}
-                placeholder="Name a habit…"
+                placeholder="Habit name"
                 onKeyDown={(event) => {
                   if (event.key === "Escape") {
                     setAdding(false);
@@ -290,7 +290,7 @@ export function TodayView() {
             <div className="panel__head">
               <div>
                 <h2>This week</h2>
-                <p>Tap a day to review it</p>
+                <p>Select a day to see it</p>
               </div>
             </div>
             <div className="week-strip">
@@ -322,7 +322,7 @@ export function TodayView() {
             <div className="panel__head">
               <div>
                 <h2>Last 30 days</h2>
-                <p>How the month is going</p>
+                <p>Completion rate</p>
               </div>
               <span className="momentum-panel__icon">
                 <TrendingUp size={16} />
@@ -338,7 +338,7 @@ export function TodayView() {
             <div className="mini-stats">
               <div>
                 <strong>{stats?.perfectDays ?? 0}</strong>
-                <span>perfect days</span>
+                <span>complete days</span>
               </div>
               <div>
                 <strong>{stats?.bestStreak ?? 0}</strong>
@@ -353,7 +353,7 @@ export function TodayView() {
                 <h2>
                   <NotebookPen size={15} /> Daily note
                 </h2>
-                <p>Private, stored on this device</p>
+                <p>Stored on this device</p>
               </div>
               <span className={`note-state ${noteState === "saving" ? "is-saving" : ""}`}>
                 {noteState === "saving" ? "Saving…" : "Saved"}
@@ -363,7 +363,7 @@ export function TodayView() {
               className="note-input"
               value={note.day === loadedDay ? note.body : savedNote}
               maxLength={5000}
-              placeholder="A line about the day…"
+              placeholder="Write a note"
               onChange={(event) => {
                 if (!loadedDay) return;
                 setNoteDraft({ day: loadedDay, body: event.target.value });

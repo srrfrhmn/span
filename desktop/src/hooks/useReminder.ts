@@ -48,11 +48,11 @@ export function useReminder() {
         if (remaining === 0 || day.target === 0) return;
 
         sendNotification({
-          title: "A nudge from span",
+          title: "span reminder",
           body:
             remaining === 1
-              ? "One habit is still open today."
-              : `${remaining} habits are still open today.`,
+              ? "1 habit is not complete today."
+              : `${remaining} habits are not complete today.`,
         });
         window.localStorage.setItem(LAST_KEY, today);
       } catch {

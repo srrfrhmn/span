@@ -51,6 +51,30 @@ CREATE INDEX IF NOT EXISTS completions_habit_day ON completions(habit_id, day);
 CREATE INDEX IF NOT EXISTS habits_active ON habits(archived, position);
 "#;
 
+const HABIT_COLUMNS: &str = "id, name, position, archived, archived_on";
+
+/// A check-in counts toward its day unless the habit was archived on or before
+/// that day. Archiving lowers today's target, so a check-in made earlier the
+/// same day must stop counting too, or a day could read as complete while an
+/// active habit is still open. Habits archived before `archived_on` existed
+/// keep all of their history.
+const COUNTED: &str = "(h.archived = 0 OR h.archived_on IS NULL OR c.day < h.archived_on)";
+
+const SETTING_KEYS: [&str; 12] = [
+    "theme",
+    "start_date",
+    "birth_date",
+    "lifespan",
+    "week_start",
+    "reduce_motion",
+    "reminder_enabled",
+    "reminder_time",
+    "minimize_to_tray",
+    "launch_at_login",
+    "onboarded",
+    "legacy_imported_at",
+];
+
 pub fn today() -> NaiveDate {
     Local::now().date_naive()
 }
@@ -65,10 +89,10 @@ pub fn iso(day: NaiveDate) -> String {
 
 pub fn parse_day(value: &str) -> Result<NaiveDate> {
     if value.len() != 10 {
-        return Err(AppError::msg("Expected a date in YYYY-MM-DD format"));
+        return Err(AppError::msg("Use the date format YYYY-MM-DD."));
     }
     NaiveDate::parse_from_str(value, "%Y-%m-%d")
-        .map_err(|_| AppError::msg("Expected a date in YYYY-MM-DD format"))
+        .map_err(|_| AppError::msg("Use the date format YYYY-MM-DD."))
 }
 
 fn parse_time(value: &str) -> bool {
@@ -79,6 +103,34 @@ fn parse_time(value: &str) -> bool {
     matches!((h.parse::<u32>(), m.parse::<u32>()), (Ok(h), Ok(m)) if h < 24 && m < 60)
 }
 
+/// The expected age, applied to the birth date, has to land after today.
+fn check_lifespan(values: &[(String, Value)], current: &Settings, today: NaiveDate) -> Result<()> {
+    let birth = values
+        .iter()
+        .find(|(key, _)| key == "birth_date")
+        .and_then(|(_, value)| value.as_str())
+        .map(parse_day)
+        .transpose()?
+        .unwrap_or_else(|| parse_day(&current.birth_date).unwrap_or(today));
+    let lifespan = values
+        .iter()
+        .find(|(key, _)| key == "lifespan")
+        .and_then(|(_, value)| value.as_i64())
+        .unwrap_or(current.lifespan);
+    let end = NaiveDate::from_ymd_opt(birth.year() + lifespan as i32, birth.month(), birth.day())
+        .or_else(|| NaiveDate::from_ymd_opt(birth.year() + lifespan as i32, birth.month(), 28))
+        .ok_or_else(|| AppError::msg("The expected age is out of range."))?;
+    if end <= today {
+        return Err(AppError::msg(
+            "The expected age must be more than your current age.",
+        ));
+    }
+    Ok(())
+}
+
+/// Desktop builds keep the data folder the app has always used. Mobile builds
+/// get theirs from Tauri, because only the sandbox's own folders are writable.
+#[cfg(desktop)]
 pub fn default_data_dir() -> PathBuf {
     #[cfg(target_os = "windows")]
     {
@@ -114,10 +166,6 @@ pub struct Db {
 }
 
 impl Db {
-    pub fn open() -> Result<Self> {
-        Self::open_at(default_data_dir())
-    }
-
     pub fn open_at(dir: PathBuf) -> Result<Self> {
         fs::create_dir_all(&dir)?;
         let path = dir.join("span-v2.db");
@@ -147,7 +195,7 @@ impl Db {
     fn lock(&self) -> Result<MutexGuard<'_, Connection>> {
         self.conn
             .lock()
-            .map_err(|_| AppError::msg("The local database is unavailable"))
+            .map_err(|_| AppError::msg("The database is not available."))
     }
 
     pub fn settings(&self) -> Result<Settings> {
@@ -168,9 +216,9 @@ impl Db {
 
     pub fn archived_habits(&self) -> Result<Vec<Habit>> {
         let conn = self.lock()?;
-        let mut stmt = conn.prepare(
-            "SELECT id, name, position, archived FROM habits WHERE archived = 1 ORDER BY position, id",
-        )?;
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {HABIT_COLUMNS} FROM habits WHERE archived = 1 ORDER BY position, id"
+        ))?;
         let rows = stmt.query_map([], habit_from_row)?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
@@ -186,14 +234,13 @@ impl Db {
     }
 
     pub fn day_state(&self, day: &str) -> Result<DayState> {
-        let parsed = parse_day(day)?;
+        parse_day(day)?;
         let conn = self.lock()?;
         let habits = active_habits(&conn)?;
         let target = target_for(&conn, day)?.unwrap_or(habits.len() as i64);
         let completed = completed_ids(&conn, day)?;
         let note = note_for(&conn, day)?;
-        let streak = current_streak(&conn, today(), habits.len() as i64)?;
-        let _ = parsed;
+        let streak = streaks(&conn, today(), habits.len() as i64)?.current;
         Ok(DayState {
             day: day.to_string(),
             habits,
@@ -207,7 +254,7 @@ impl Db {
     pub fn toggle(&self, habit_id: i64, day: &str) -> Result<DayState> {
         let parsed = parse_day(day)?;
         if parsed > today() {
-            return Err(AppError::msg("Future days cannot be edited"));
+            return Err(AppError::msg("You cannot change a future day."));
         }
         {
             let conn = self.lock()?;
@@ -219,8 +266,8 @@ impl Db {
                 )
                 .optional()?;
             match archived {
-                None => return Err(AppError::msg("That habit no longer exists")),
-                Some(1) => return Err(AppError::msg("Archived habits cannot be edited")),
+                None => return Err(AppError::msg("This habit does not exist.")),
+                Some(1) => return Err(AppError::msg("You cannot change an archived habit.")),
                 _ => {}
             }
             let exists: bool = conn.query_row(
@@ -255,7 +302,7 @@ impl Db {
         let count = active_count(&conn)?;
         if count >= MAX_HABITS {
             return Err(AppError::msg(format!(
-                "Keep at most {MAX_HABITS} active habits"
+                "You can have a maximum of {MAX_HABITS} active habits."
             )));
         }
         let position: i64 = conn.query_row(
@@ -279,7 +326,7 @@ impl Db {
             params![clean, id],
         )?;
         if changed == 0 {
-            return Err(AppError::msg("That habit no longer exists"));
+            return Err(AppError::msg("This habit does not exist."));
         }
         active_habits(&conn)
     }
@@ -290,7 +337,7 @@ impl Db {
         let active_ids: std::collections::HashSet<i64> = active.iter().map(|h| h.id).collect();
         let given: std::collections::HashSet<i64> = ids.iter().copied().collect();
         if ids.len() != active.len() || given != active_ids {
-            return Err(AppError::msg("The habit order is out of date"));
+            return Err(AppError::msg("The habit list changed. Try again."));
         }
         let mut conn = conn;
         let tx = conn.transaction()?;
@@ -314,16 +361,16 @@ impl Db {
             )
             .optional()?;
         match archived {
-            None => return Err(AppError::msg("That habit no longer exists")),
-            Some(1) => return Err(AppError::msg("That habit is already archived")),
+            None => return Err(AppError::msg("This habit does not exist.")),
+            Some(1) => return Err(AppError::msg("This habit is already archived.")),
             _ => {}
         }
         if active_count(&conn)? <= 1 {
-            return Err(AppError::msg("Keep at least one active habit"));
+            return Err(AppError::msg("You must have at least one active habit."));
         }
         conn.execute(
-            "UPDATE habits SET archived = 1 WHERE id = ?1 AND archived = 0",
-            params![id],
+            "UPDATE habits SET archived = 1, archived_on = ?2 WHERE id = ?1 AND archived = 0",
+            params![id, today_iso()],
         )?;
         sync_today_target(&conn, &today_iso())?;
         active_habits(&conn)
@@ -334,7 +381,7 @@ impl Db {
         let count = active_count(&conn)?;
         if count >= MAX_HABITS {
             return Err(AppError::msg(format!(
-                "Keep at most {MAX_HABITS} active habits"
+                "You can have a maximum of {MAX_HABITS} active habits."
             )));
         }
         let position: i64 = conn.query_row(
@@ -343,11 +390,12 @@ impl Db {
             |row| row.get(0),
         )?;
         let changed = conn.execute(
-            "UPDATE habits SET archived = 0, position = ?1 WHERE id = ?2 AND archived = 1",
+            "UPDATE habits SET archived = 0, archived_on = NULL, position = ?1
+             WHERE id = ?2 AND archived = 1",
             params![position, id],
         )?;
         if changed == 0 {
-            return Err(AppError::msg("That habit is already active"));
+            return Err(AppError::msg("This habit is already active."));
         }
         sync_today_target(&conn, &today_iso())?;
         active_habits(&conn)
@@ -363,9 +411,9 @@ impl Db {
             )
             .optional()?;
         match archived {
-            None => return Err(AppError::msg("That habit no longer exists")),
+            None => return Err(AppError::msg("This habit does not exist.")),
             Some(0) if active_count(&conn)? <= 1 => {
-                return Err(AppError::msg("Keep at least one active habit"))
+                return Err(AppError::msg("You must have at least one active habit."))
             }
             _ => {}
         }
@@ -381,7 +429,7 @@ impl Db {
             return Ok(Vec::new());
         }
         if (end - start).num_days() > 366 * 200 {
-            return Err(AppError::msg("That range is too large"));
+            return Err(AppError::msg("The date range is too large."));
         }
         let conn = self.lock()?;
         let (counts, targets) = summary_maps(&conn, start, end)?;
@@ -531,7 +579,7 @@ impl Db {
             return Ok(None);
         }
         if clean.chars().count() > 5000 {
-            return Err(AppError::msg("Notes are limited to 5000 characters"));
+            return Err(AppError::msg("A note can have a maximum of 5000 characters."));
         }
         conn.execute(
             "INSERT INTO day_notes(day, body) VALUES(?1, ?2)
@@ -545,10 +593,14 @@ impl Db {
         let today = today();
         let current = self.settings()?;
         let mut values: Vec<(String, Value)> = Vec::new();
+        // Only a change to the birth date or lifespan is checked against
+        // today. Re-checking on every save would lock someone out of all their
+        // settings once they outlive the age they once entered.
+        let touches_lifespan = patch.birth_date.is_some() || patch.lifespan.is_some();
 
         if let Some(theme) = patch.theme {
             if !THEMES.contains(&theme.as_str()) {
-                return Err(AppError::msg("Unknown theme"));
+                return Err(AppError::msg("This theme does not exist."));
             }
             values.push(("theme".into(), json!(theme)));
         }
@@ -559,19 +611,19 @@ impl Db {
         if let Some(value) = patch.birth_date {
             let birth = parse_day(&value)?;
             if birth >= today {
-                return Err(AppError::msg("Birth date must be in the past"));
+                return Err(AppError::msg("The birth date must be in the past."));
             }
             values.push(("birth_date".into(), json!(value)));
         }
         if let Some(value) = patch.lifespan {
             if !(1..=150).contains(&value) {
-                return Err(AppError::msg("Expected age must be between 1 and 150"));
+                return Err(AppError::msg("The expected age must be between 1 and 150."));
             }
             values.push(("lifespan".into(), json!(value)));
         }
         if let Some(value) = patch.week_start {
             if value != 0 && value != 1 {
-                return Err(AppError::msg("Week start must be Sunday or Monday"));
+                return Err(AppError::msg("The week must start on Sunday or Monday."));
             }
             values.push(("week_start".into(), json!(value)));
         }
@@ -583,7 +635,7 @@ impl Db {
         }
         if let Some(value) = patch.reminder_time {
             if !parse_time(&value) {
-                return Err(AppError::msg("Reminder time must be HH:MM"));
+                return Err(AppError::msg("Use the time format HH:MM."));
             }
             values.push(("reminder_time".into(), json!(value)));
         }
@@ -597,25 +649,8 @@ impl Db {
             values.push(("onboarded".into(), json!(value)));
         }
 
-        let birth = values
-            .iter()
-            .find(|(key, _)| key == "birth_date")
-            .and_then(|(_, value)| value.as_str())
-            .map(parse_day)
-            .transpose()?
-            .unwrap_or_else(|| parse_day(&current.birth_date).unwrap_or(today));
-        let lifespan = values
-            .iter()
-            .find(|(key, _)| key == "lifespan")
-            .and_then(|(_, value)| value.as_i64())
-            .unwrap_or(current.lifespan);
-        let end = NaiveDate::from_ymd_opt(birth.year() + lifespan as i32, birth.month(), birth.day())
-            .or_else(|| NaiveDate::from_ymd_opt(birth.year() + lifespan as i32, birth.month(), 28))
-            .ok_or_else(|| AppError::msg("That lifespan is out of range"))?;
-        if end <= today {
-            return Err(AppError::msg(
-                "Expected age must be later than your current age",
-            ));
+        if touches_lifespan {
+            check_lifespan(&values, &current, today)?;
         }
 
         if !values.is_empty() {
@@ -713,10 +748,60 @@ impl Db {
 
     pub fn import_json(&self, text: &str) -> Result<ImportResult> {
         let bundle: ExportBundle = serde_json::from_str(text)
-            .map_err(|_| AppError::msg("That file is not a span backup"))?;
+            .map_err(|_| AppError::msg("This file is not a span backup."))?;
         if bundle.version != 1 {
-            return Err(AppError::msg("This backup was made by a newer version"));
+            return Err(AppError::msg("A newer version of span made this backup. Update span and try again."));
         }
+
+        // Check and clean everything before touching the database, so a bad
+        // file leaves the current data exactly as it was.
+        let mut imported_ids = std::collections::HashSet::new();
+        let mut habits = Vec::new();
+        for habit in &bundle.habits {
+            let name = habit.name.trim();
+            if name.is_empty() {
+                continue;
+            }
+            if !imported_ids.insert(habit.id) {
+                return Err(AppError::msg("This backup contains the same habit two times."));
+            }
+            let archived_on = habit
+                .archived_on
+                .as_deref()
+                .filter(|day| parse_day(day).is_ok())
+                .map(str::to_string);
+            let name: String = name.chars().take(80).collect();
+            habits.push((habit.id, name, habit.position, habit.archived, archived_on));
+        }
+        // A check-in for a habit that was skipped or missing would violate the
+        // foreign key and abort the whole import, so drop those rows instead.
+        let completions: Vec<&Completion> = bundle
+            .completions
+            .iter()
+            .filter(|completion| imported_ids.contains(&completion.habit_id))
+            .filter(|completion| parse_day(&completion.day).is_ok())
+            .collect();
+        let targets: Vec<&DayTarget> = bundle
+            .targets
+            .iter()
+            .filter(|target| target.total >= 0 && parse_day(&target.day).is_ok())
+            .collect();
+        let notes: Vec<(&str, String)> = bundle
+            .notes
+            .iter()
+            .filter(|note| parse_day(&note.day).is_ok())
+            .map(|note| (note.day.as_str(), note.body.trim().chars().take(5000).collect()))
+            .filter(|(_, body): &(&str, String)| !body.is_empty())
+            .collect();
+        let settings: Vec<(&String, &Value)> = bundle
+            .settings
+            .iter()
+            .filter(|(key, _)| SETTING_KEYS.contains(&key.as_str()))
+            .collect();
+
+        // Importing replaces everything, so keep a copy of what is here now.
+        self.backup_now()?;
+
         let mut conn = self.lock()?;
         let tx = conn.transaction()?;
         tx.execute("DELETE FROM completions", [])?;
@@ -725,50 +810,32 @@ impl Db {
         tx.execute("DELETE FROM habits", [])?;
         tx.execute("DELETE FROM settings", [])?;
 
-        let mut imported_ids = std::collections::HashSet::new();
-        for habit in &bundle.habits {
-            if habit.name.trim().is_empty() {
-                continue;
-            }
+        for (id, name, position, archived, archived_on) in &habits {
             tx.execute(
-                "INSERT INTO habits(id, name, position, archived) VALUES(?1, ?2, ?3, ?4)",
-                params![
-                    habit.id,
-                    habit.name.trim(),
-                    habit.position,
-                    if habit.archived { 1 } else { 0 }
-                ],
+                "INSERT INTO habits(id, name, position, archived, archived_on)
+                 VALUES(?1, ?2, ?3, ?4, ?5)",
+                params![id, name, position, if *archived { 1 } else { 0 }, archived_on],
             )?;
-            imported_ids.insert(habit.id);
         }
-        // A check-in for a habit that was skipped or missing would violate the
-        // foreign key and abort the whole import, so drop those rows instead.
-        let completions: Vec<&Completion> = bundle
-            .completions
-            .iter()
-            .filter(|completion| imported_ids.contains(&completion.habit_id))
-            .collect();
         for completion in &completions {
             tx.execute(
                 "INSERT OR IGNORE INTO completions(habit_id, day) VALUES(?1, ?2)",
                 params![completion.habit_id, completion.day],
             )?;
         }
-        for target in &bundle.targets {
+        for target in &targets {
             tx.execute(
                 "INSERT OR REPLACE INTO daily_targets(day, total) VALUES(?1, ?2)",
                 params![target.day, target.total],
             )?;
         }
-        for note in &bundle.notes {
-            if !note.body.trim().is_empty() {
-                tx.execute(
-                    "INSERT OR REPLACE INTO day_notes(day, body) VALUES(?1, ?2)",
-                    params![note.day, note.body],
-                )?;
-            }
+        for (day, body) in &notes {
+            tx.execute(
+                "INSERT OR REPLACE INTO day_notes(day, body) VALUES(?1, ?2)",
+                params![day, body],
+            )?;
         }
-        for (key, value) in &bundle.settings {
+        for (key, value) in settings {
             tx.execute(
                 "INSERT INTO settings(key, value) VALUES(?1, ?2)
                  ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -784,10 +851,10 @@ impl Db {
         seed_defaults(&conn)?;
 
         Ok(ImportResult {
-            habits: imported_ids.len(),
+            habits: habits.len(),
             completions: completions.len(),
-            days: bundle.targets.len(),
-            notes: bundle.notes.len(),
+            days: targets.len(),
+            notes: notes.len(),
         })
     }
 
@@ -830,6 +897,9 @@ impl Db {
             stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
                 .collect::<rusqlite::Result<Vec<_>>>()?
         };
+
+        // Importing replaces everything, so keep a copy of what is here now.
+        self.backup_now()?;
 
         let mut conn = self.lock()?;
         let tx = conn.transaction()?;
@@ -938,6 +1008,10 @@ fn migrate(conn: &Connection) -> Result<()> {
         conn.execute_batch(SCHEMA)?;
         conn.pragma_update(None, "user_version", 1)?;
     }
+    if version < 2 {
+        conn.execute_batch("ALTER TABLE habits ADD COLUMN archived_on TEXT;")?;
+        conn.pragma_update(None, "user_version", 2)?;
+    }
     Ok(())
 }
 
@@ -1031,20 +1105,22 @@ fn habit_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Habit> {
         name: row.get(1)?,
         position: row.get(2)?,
         archived: row.get::<_, i64>(3)? != 0,
+        archived_on: row.get(4)?,
     })
 }
 
 fn active_habits(conn: &Connection) -> Result<Vec<Habit>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, name, position, archived FROM habits WHERE archived = 0 ORDER BY position, id",
-    )?;
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {HABIT_COLUMNS} FROM habits WHERE archived = 0 ORDER BY position, id"
+    ))?;
     let rows = stmt.query_map([], habit_from_row)?;
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
 }
 
 fn all_habits(conn: &Connection) -> Result<Vec<Habit>> {
-    let mut stmt =
-        conn.prepare("SELECT id, name, position, archived FROM habits ORDER BY archived, position, id")?;
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {HABIT_COLUMNS} FROM habits ORDER BY archived, position, id"
+    ))?;
     let rows = stmt.query_map([], habit_from_row)?;
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
 }
@@ -1060,10 +1136,10 @@ fn active_count(conn: &Connection) -> Result<i64> {
 fn clean_name(name: &str) -> Result<String> {
     let clean = name.trim();
     if clean.is_empty() {
-        return Err(AppError::msg("Give the habit a name"));
+        return Err(AppError::msg("Enter a habit name."));
     }
     if clean.chars().count() > 80 {
-        return Err(AppError::msg("Habit names are limited to 80 characters"));
+        return Err(AppError::msg("A habit name can have a maximum of 80 characters."));
     }
     Ok(clean.to_string())
 }
@@ -1089,8 +1165,10 @@ fn target_for(conn: &Connection, day: &str) -> Result<Option<i64>> {
 }
 
 fn completed_ids(conn: &Connection, day: &str) -> Result<Vec<i64>> {
-    let mut stmt =
-        conn.prepare("SELECT habit_id FROM completions WHERE day = ?1 ORDER BY habit_id")?;
+    let mut stmt = conn.prepare(&format!(
+        "SELECT c.habit_id FROM completions c JOIN habits h ON h.id = c.habit_id
+         WHERE c.day = ?1 AND {COUNTED} ORDER BY c.habit_id"
+    ))?;
     let rows = stmt.query_map(params![day], |row| row.get(0))?;
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
 }
@@ -1111,9 +1189,10 @@ fn summary_maps(
     end: NaiveDate,
 ) -> Result<(BTreeMap<NaiveDate, i64>, BTreeMap<NaiveDate, i64>)> {
     let mut counts: BTreeMap<NaiveDate, i64> = BTreeMap::new();
-    let mut stmt = conn.prepare(
-        "SELECT day, COUNT(*) FROM completions WHERE day BETWEEN ?1 AND ?2 GROUP BY day",
-    )?;
+    let mut stmt = conn.prepare(&format!(
+        "SELECT c.day, COUNT(*) FROM completions c JOIN habits h ON h.id = c.habit_id
+         WHERE c.day BETWEEN ?1 AND ?2 AND {COUNTED} GROUP BY c.day"
+    ))?;
     let rows = stmt.query_map(params![iso(start), iso(end)], |row| {
         Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
     })?;
@@ -1137,29 +1216,6 @@ fn summary_maps(
         }
     }
     Ok((counts, targets))
-}
-
-fn current_streak(conn: &Connection, through: NaiveDate, active: i64) -> Result<i64> {
-    if active == 0 {
-        return Ok(0);
-    }
-    let settings = settings_from(conn)?;
-    let start = parse_day(&settings.start_date).unwrap_or(through);
-    if start > through {
-        return Ok(0);
-    }
-    let (counts, targets) = summary_maps(conn, start, through)?;
-    let target = |day: NaiveDate| targets.get(&day).copied().unwrap_or(active);
-    let mut cursor = through;
-    if counts.get(&cursor).copied().unwrap_or(0) < target(cursor) {
-        cursor -= Duration::days(1);
-    }
-    let mut streak = 0;
-    while cursor >= start && counts.get(&cursor).copied().unwrap_or(0) >= target(cursor) {
-        streak += 1;
-        cursor -= Duration::days(1);
-    }
-    Ok(streak)
 }
 
 fn streaks(conn: &Connection, through: NaiveDate, active: i64) -> Result<Streak> {
@@ -1447,6 +1503,152 @@ mod tests {
         assert_eq!(reordered[1].id, first);
 
         assert!(db.reorder_habits(&[first]).is_err());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn archiving_a_checked_habit_does_not_complete_the_day() {
+        let dir = scratch("archive-today");
+        let db = Db::open_at(dir.clone()).expect("open");
+        db.create_habit("A").expect("habit");
+        db.create_habit("B").expect("habit");
+        let habits = db.create_habit("C").expect("habit");
+        let (a, b, c) = (habits[0].id, habits[1].id, habits[2].id);
+        let today = today_iso();
+
+        db.toggle(a, &today).expect("toggle");
+        db.archive_habit(a).expect("archive");
+        let state = db.toggle(b, &today).expect("toggle");
+        assert_eq!(state.target, 2);
+        assert_eq!(state.completed, vec![b]);
+        assert_eq!(state.streak, 0);
+        let summary = db.range_summary(&today, &today).expect("range");
+        assert_eq!(summary[0].count, 1);
+
+        let state = db.toggle(c, &today).expect("toggle");
+        assert_eq!(state.completed.len(), 2);
+        assert_eq!(state.streak, 1);
+
+        // Restoring brings the earlier check-in back into the count.
+        db.restore_habit(a).expect("restore");
+        let state = db.day_state(&today).expect("day");
+        assert_eq!(state.target, 3);
+        assert_eq!(state.completed.len(), 3);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn archived_habits_keep_their_earlier_history() {
+        let dir = scratch("archive-history");
+        let db = Db::open_at(dir.clone()).expect("open");
+        db.create_habit("A").expect("habit");
+        let habits = db.create_habit("B").expect("habit");
+        let a = habits[0].id;
+        let yesterday = iso(today() - Duration::days(1));
+        db.toggle(a, &yesterday).expect("toggle");
+        db.archive_habit(a).expect("archive");
+        let summary = db.range_summary(&yesterday, &yesterday).expect("range");
+        assert_eq!(summary[0].count, 1);
+        assert_eq!(db.day_state(&yesterday).expect("day").completed, vec![a]);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn settings_save_after_outliving_the_expected_age() {
+        let dir = scratch("outlived");
+        let db = Db::open_at(dir.clone()).expect("open");
+        // Simulate time passing: the stored profile now ends in the past.
+        {
+            let conn = db.lock().expect("lock");
+            conn.execute(
+                "UPDATE settings SET value = '\"1930-01-01\"' WHERE key = 'birth_date'",
+                [],
+            )
+            .expect("birth");
+        }
+        let settings = db
+            .update_settings(SettingsPatch {
+                theme: Some("ocean".into()),
+                ..Default::default()
+            })
+            .expect("theme still saves");
+        assert_eq!(settings.theme, "ocean");
+        assert!(db
+            .update_settings(SettingsPatch {
+                lifespan: Some(80),
+                ..Default::default()
+            })
+            .is_err());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn bad_import_leaves_data_alone_and_good_import_backs_up_first() {
+        let dir = scratch("import-safety");
+        let db = Db::open_at(dir.clone()).expect("open");
+        let habit = db.create_habit("Keep me").expect("habit").remove(0);
+        let today = today_iso();
+        db.toggle(habit.id, &today).expect("toggle");
+
+        let mut bundle: Value =
+            serde_json::from_str(&db.export_json().expect("export")).expect("json");
+        let duplicate = bundle["habits"][0].clone();
+        bundle["habits"].as_array_mut().expect("habits").push(duplicate);
+        assert!(db.import_json(&bundle.to_string()).is_err());
+        assert_eq!(db.active_habits().expect("habits")[0].name, "Keep me");
+        assert_eq!(db.day_state(&today).expect("day").completed, vec![habit.id]);
+
+        let mut bundle: Value =
+            serde_json::from_str(&db.export_json().expect("export")).expect("json");
+        bundle["habits"][0]["name"] = json!("Replaced");
+        bundle["completions"]
+            .as_array_mut()
+            .expect("completions")
+            .push(json!({ "habitId": habit.id, "day": "not-a-day" }));
+        bundle["notes"]
+            .as_array_mut()
+            .expect("notes")
+            .push(json!({ "day": "2026-02-30", "body": "bad day" }));
+        bundle["settings"]["mystery"] = json!("value");
+        let result = db.import_json(&bundle.to_string()).expect("import");
+        assert_eq!(result.completions, 1);
+        assert_eq!(result.notes, 0);
+        assert_eq!(db.active_habits().expect("habits")[0].name, "Replaced");
+        {
+            let conn = db.lock().expect("lock");
+            assert!(setting_value(&conn, "mystery").expect("setting").is_none());
+        }
+
+        let backups: Vec<_> = fs::read_dir(dir.join("backups"))
+            .expect("backups")
+            .filter_map(|entry| entry.ok())
+            .collect();
+        assert!(!backups.is_empty());
+        let saved = fs::read_to_string(backups[0].path()).expect("backup");
+        assert!(saved.contains("Keep me"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn migrates_a_version_one_database() {
+        let dir = scratch("migrate");
+        {
+            let conn = Connection::open(dir.join("span-v2.db")).expect("db");
+            conn.execute_batch(SCHEMA).expect("schema");
+            conn.pragma_update(None, "user_version", 1).expect("version");
+            conn.execute(
+                "INSERT INTO habits(id, name, position, archived) VALUES (1, 'Old', 0, 1), (2, 'Now', 1, 0)",
+                [],
+            )
+            .expect("habits");
+            conn.execute("INSERT INTO completions(habit_id, day) VALUES (1, '2026-01-05')", [])
+                .expect("completion");
+        }
+        let db = Db::open_at(dir.clone()).expect("open");
+        let archived = db.archived_habits().expect("archived");
+        assert_eq!(archived[0].archived_on, None);
+        let summary = db.range_summary("2026-01-05", "2026-01-05").expect("range");
+        assert_eq!(summary[0].count, 1);
         let _ = fs::remove_dir_all(dir);
     }
 }

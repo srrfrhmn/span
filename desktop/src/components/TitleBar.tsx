@@ -1,6 +1,7 @@
 import { Minus, Square, Copy, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getCurrentWindow, type Window } from "@tauri-apps/api/window";
+import { useApp } from "../state/store";
 
 /**
  * Resolved on first use rather than at module scope: Tauri installs its
@@ -13,6 +14,12 @@ function appWindow(): Window {
 }
 
 export function TitleBar() {
+  const desktop = useApp((state) => state.desktop);
+  return desktop ? <DesktopTitleBar /> : null;
+}
+
+/** The frameless window's own titlebar. Phones have no window to control. */
+function DesktopTitleBar() {
   const [maximized, setMaximized] = useState(false);
 
   useEffect(() => {

@@ -2,29 +2,27 @@ mod commands;
 mod db;
 mod error;
 mod models;
+#[cfg(desktop)]
 mod tray;
 
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_notification::init());
+
+    // The tray, launch at login, window state and close-to-tray only exist on
+    // the desktop. Mobile builds leave them out entirely.
+    #[cfg(desktop)]
+    let builder = builder
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
-        .setup(|app| {
-            let db = db::Db::open()?;
-            let _ = db.auto_backup();
-            let dir = db.dir().to_path_buf();
-            app.manage(commands::AppState { db, dir });
-            tray::setup(app)?;
-            Ok(())
-        })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let minimize = window
@@ -37,6 +35,23 @@ pub fn run() {
                     let _ = window.hide();
                 }
             }
+        });
+
+    builder
+        .setup(|app| {
+            #[cfg(desktop)]
+            let dir = db::default_data_dir();
+            #[cfg(mobile)]
+            let dir = app.path().app_data_dir()?;
+
+            let db = db::Db::open_at(dir)?;
+            let _ = db.auto_backup();
+            let dir = db.dir().to_path_buf();
+            app.manage(commands::AppState { db, dir });
+
+            #[cfg(desktop)]
+            tray::setup(app)?;
+            Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::bootstrap,

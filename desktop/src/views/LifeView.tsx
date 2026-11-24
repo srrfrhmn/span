@@ -169,14 +169,14 @@ export function LifeView() {
       <header className="page-head">
         <div className="page-head__titles">
           <span className="eyebrow">Life</span>
-          <h1>Your span</h1>
+          <h1>Life in weeks</h1>
           <p className="page-head__sub">
-            {years} years old · {percent}% of an expected {lifespan}-year life
+            Age {years} · {percent}% of {lifespan} years
           </p>
         </div>
         <div className="page-head__actions">
           <button className="btn ghost small" onClick={() => setView("settings")}>
-            <Settings2 size={14} /> Adjust
+            <Settings2 size={14} /> Edit
           </button>
         </div>
       </header>
@@ -188,18 +188,18 @@ export function LifeView() {
         </div>
         <div>
           <strong>{left.toLocaleString()}</strong>
-          <span>weeks ahead</span>
+          <span>weeks left</span>
         </div>
         <div>
           <strong>{percent}%</strong>
-          <span>of your span</span>
+          <span>of expected life</span>
         </div>
         <div className="life-stats__legend">
           <span>
             <i className="legend__cell heat-5" /> lived
           </span>
           <span>
-            <i className="legend__cell heat-0" /> ahead
+            <i className="legend__cell heat-0" /> left
           </span>
         </div>
       </div>

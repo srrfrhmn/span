@@ -54,13 +54,13 @@ export function Sidebar() {
 
         <button className="nav__item" onClick={() => setView("settings")} aria-current={view === "settings" ? "page" : undefined}>
           <Settings size={17} strokeWidth={1.8} />
-          <span>Preferences</span>
+          <span>Settings</span>
         </button>
 
         <button className="kbd-hint" onClick={() => setPalette(true)}>
           <Command size={12} />
           <span>K</span>
-          <em>Quick actions</em>
+          <em>Commands</em>
         </button>
       </div>
     </aside>

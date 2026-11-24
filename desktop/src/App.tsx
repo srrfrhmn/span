@@ -101,7 +101,7 @@ export default function App() {
   }, [selectDay, setPalette, step]);
 
   useEffect(() => {
-    document.title = view === "settings" ? "Preferences · span" : "span";
+    document.title = view === "settings" ? "Settings · span" : "span";
   }, [view]);
 
   if (!ready) {
@@ -110,7 +110,7 @@ export default function App() {
         <TitleBar />
         <div className="boot__body">
           <span className="mark mark--large">s</span>
-          <p>Gathering your days…</p>
+          <p>Loading…</p>
         </div>
       </div>
     );
@@ -122,7 +122,7 @@ export default function App() {
         <TitleBar />
         <div className="boot__body boot__body--error">
           <AlertTriangle size={22} />
-          <h1>span could not open its database.</h1>
+          <h1>Cannot open the database.</h1>
           <p>{error}</p>
           <button className="btn primary" onClick={() => void init()}>
             <RotateCw size={15} /> Try again

@@ -40,6 +40,7 @@ export function SettingsView() {
   const archived = useApp((state) => state.archived);
   const dataDir = useApp((state) => state.dataDir);
   const legacyAvailable = useApp((state) => state.legacyAvailable);
+  const desktop = useApp((state) => state.desktop);
   const saveSettings = useApp((state) => state.saveSettings);
   const addHabit = useApp((state) => state.addHabit);
   const renameHabit = useApp((state) => state.renameHabit);
@@ -81,10 +82,11 @@ export function SettingsView() {
   }, [loadArchived]);
 
   useEffect(() => {
+    if (!desktop) return;
     void isAutostartEnabled()
       .then((enabled) => setLaunchAtLogin(enabled))
       .catch(() => undefined);
-  }, []);
+  }, [desktop]);
 
   const pickTheme = (theme: ThemeKey) => {
     void saveSettings({ theme }).catch((error) => toast(errorMessage(error), "error"));
@@ -183,7 +185,7 @@ export function SettingsView() {
 
   const archive = async (id: number) => {
     if (habits.length <= 1) {
-      toast("Keep at least one active habit.", "error");
+      toast("You must have at least one active habit.", "error");
       return;
     }
     const habit = habits.find((entry) => entry.id === id);
@@ -198,7 +200,7 @@ export function SettingsView() {
   const remove = async (id: number) => {
     const habit = archived.find((entry) => entry.id === id);
     if (!habit) return;
-    const ok = await confirm(`Permanently delete “${habit.name}” and its history?`, {
+    const ok = await confirm(`Delete “${habit.name}” and all its history? You cannot undo this.`, {
       title: "Delete habit",
       kind: "warning",
     });
@@ -226,7 +228,7 @@ export function SettingsView() {
         granted = result === "granted";
       }
       if (!granted) {
-        toast("Notifications are blocked in Windows settings.", "error");
+        toast("Notifications are blocked. Allow them in the system settings.", "error");
         return;
       }
     }
@@ -244,7 +246,7 @@ export function SettingsView() {
       setLaunchAtLogin(value);
       await saveSettings({ launchAtLogin: value });
     } catch {
-      toast("Launch at login is available in an installed build.", "error");
+      toast("Launch at login works only in an installed build.", "error");
     }
   };
 
@@ -273,7 +275,7 @@ export function SettingsView() {
       filters: [{ name: "span backup", extensions: ["json"] }],
     });
     if (!path || typeof path !== "string") return;
-    const ok = await confirm("Replace everything with this backup?", {
+    const ok = await confirm("Replace all current data with this backup?", {
       title: "Import backup",
       kind: "warning",
     });
@@ -307,7 +309,7 @@ export function SettingsView() {
 
   const doImportLegacy = async () => {
     const ok = await confirm(
-      "Import habits and check-ins from the original span database? This replaces the current data.",
+      "Import habits and check-ins from the original span database? This replaces all current data.",
       { title: "Import original span data", kind: "warning" },
     );
     if (!ok) return;
@@ -330,7 +332,7 @@ export function SettingsView() {
   const copyDir = async () => {
     try {
       await navigator.clipboard.writeText(dataDir);
-      toast("Data folder copied.", "info");
+      toast("Data folder path copied.", "info");
     } catch {
       toast(dataDir, "info");
     }
@@ -341,7 +343,7 @@ export function SettingsView() {
       <header className="page-head">
         <div className="page-head__titles">
           <span className="eyebrow">Customize span</span>
-          <h1>Preferences</h1>
+          <h1>Settings</h1>
           <p className="page-head__sub">Everything stays on this device.</p>
         </div>
       </header>
@@ -354,7 +356,7 @@ export function SettingsView() {
           <div className="settings-row">
             <div>
               <strong>Reduce motion</strong>
-              <span>Keep transitions minimal and immediate.</span>
+              <span>Turn off animations.</span>
             </div>
             <Toggle
               checked={settings.reduceMotion}
@@ -373,7 +375,7 @@ export function SettingsView() {
             <div>
               <h2>Daily habits</h2>
               <p className="settings-help">
-                Rename, reorder, or archive. Archived habits keep their history.
+                Rename, reorder, or archive habits. Archived habits keep their history.
               </p>
             </div>
             <span className="count-pill">
@@ -453,7 +455,7 @@ export function SettingsView() {
                 value={newHabit}
                 maxLength={80}
                 onChange={(event) => setNewHabit(event.target.value)}
-                placeholder="Add a habit…"
+                placeholder="Habit name"
                 aria-label="New habit name"
               />
               <button className="btn primary small" type="submit" disabled={!newHabit.trim()}>
@@ -524,13 +526,13 @@ export function SettingsView() {
         </section>
 
         <section className="panel settings-card">
-          <h2>Reminders & startup</h2>
+          <h2>{desktop ? "Reminders & startup" : "Reminders"}</h2>
           <div className="settings-row">
             <div>
               <strong>
                 <Bell size={14} /> Daily reminder
               </strong>
-              <span>A nudge at the time below if the day is incomplete.</span>
+              <span>Show a notification at this time if a habit is not complete.</span>
             </div>
             <Toggle
               checked={settings.reminderEnabled}
@@ -551,34 +553,38 @@ export function SettingsView() {
               }
             />
           </label>
-          <div className="settings-row">
-            <div>
-              <strong>
-                <Power size={14} /> Launch at login
-              </strong>
-              <span>Open span automatically when Windows starts.</span>
-            </div>
-            <Toggle
-              checked={launchAtLogin}
-              onChange={(value) => void toggleAutostart(value)}
-              label="Launch at login"
-            />
-          </div>
-          <div className="settings-row">
-            <div>
-              <strong>Minimize to tray</strong>
-              <span>Closing the window keeps the reminder running.</span>
-            </div>
-            <Toggle
-              checked={settings.minimizeToTray}
-              onChange={(value) =>
-                void saveSettings({ minimizeToTray: value }).catch((error) =>
-                  toast(errorMessage(error), "error"),
-                )
-              }
-              label="Minimize to tray"
-            />
-          </div>
+          {desktop ? (
+            <>
+              <div className="settings-row">
+                <div>
+                  <strong>
+                    <Power size={14} /> Launch at login
+                  </strong>
+                  <span>Start span when you sign in.</span>
+                </div>
+                <Toggle
+                  checked={launchAtLogin}
+                  onChange={(value) => void toggleAutostart(value)}
+                  label="Launch at login"
+                />
+              </div>
+              <div className="settings-row">
+                <div>
+                  <strong>Minimize to tray</strong>
+                  <span>When you close the window, span stays in the tray and reminders continue.</span>
+                </div>
+                <Toggle
+                  checked={settings.minimizeToTray}
+                  onChange={(value) =>
+                    void saveSettings({ minimizeToTray: value }).catch((error) =>
+                      toast(errorMessage(error), "error"),
+                    )
+                  }
+                  label="Minimize to tray"
+                />
+              </div>
+            </>
+          ) : null}
         </section>
 
         <section className="panel settings-card settings-card--wide">
@@ -586,7 +592,7 @@ export function SettingsView() {
             <div>
               <h2>Data</h2>
               <p className="settings-help">
-                Exports are plain JSON. Automatic daily backups are kept for two weeks.
+                Exports are JSON files. span makes a backup each day and keeps the last 14.
               </p>
             </div>
             <Database size={18} className="muted-icon" />
@@ -621,11 +627,11 @@ export function SettingsView() {
           <div>
             <h2>span 0.1.0</h2>
             <p className="settings-help">
-              A habit tracker. No account, no cloud, no telemetry. Built with Tauri,
-              React, and SQLite.
+              A habit tracker. All data stays on this device. There is no account, cloud
+              sync, or telemetry. Built with Tauri, React, and SQLite.
             </p>
           </div>
-          <span className="about__badge">Local first</span>
+          <span className="about__badge">Local only</span>
         </section>
       </div>
     </div>

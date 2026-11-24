@@ -7,6 +7,10 @@ pub struct Habit {
     pub name: String,
     pub position: i64,
     pub archived: bool,
+    /// The day the habit was archived; check-ins from then on stop counting.
+    /// Missing from backups made before it existed.
+    #[serde(default)]
+    pub archived_on: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -76,6 +80,10 @@ pub struct Bootstrap {
     pub streak: i64,
     pub legacy_available: bool,
     pub data_dir: String,
+    /// `windows`, `macos`, `ios`, … as reported by Rust.
+    pub platform: String,
+    /// False on iOS and Android, where there is no tray, titlebar or autostart.
+    pub desktop: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
